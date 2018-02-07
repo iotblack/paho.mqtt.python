@@ -1,0 +1,5 @@
+user pub
+topic mytopic/news
+
+user sub
+topic read mytopic/news
