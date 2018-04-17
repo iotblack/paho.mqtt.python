@@ -27,7 +27,9 @@ import paho.mqtt.client as mqtt
 gettopic = None
 updatetopic = None
 
-shadow_storage = {}
+iot_storage = {}
+iot_storage["shadow"] = {}
+iot_storage["firm"] = {}
 
 def on_connect(mqttc, userdata, flags, rc):
     if userdata == True:
@@ -43,17 +45,40 @@ def is_json(myjson):
 
 def on_message(mqttc, userdata, msg):
     global updatetopic
-    global shadow_storage
+    global iot_storage
     print("received topic:" + msg.topic + "|" + msg.payload)
     if not is_json(msg.payload):
         print("invalid payload:" + msg.payload)
         return
 
-    req = json.load(msg.payload.decode("utf-8"))
+    req = json.loads(msg.payload.decode("utf-8"))
+    resp = {}
+    resp["method"]= "reply"
+    resp["passthrough"] = req['passthrough']
     if req["method"] == "get":
-        print("method get received.")
+        resp['state'] = iot_storage["shadow"]
+        resp_str = json.dumps(resp)
+        print("response:" + resp_str)
+        mqttc.publish(gettopic, resp_str, 1, True)
     elif req["method"] == "update":
-        mqttc.publish(gettopic, '{"method":"control"}', 1, True)
+        if "reported" in req["state"]:
+            for k in req["state"]["reported"]:
+                iot_storage["shadow"]["reported"][k] = req["state"]["reported"][k]
+                #  print("report : " + k + "=", v)
+        if "desired" in req["state"]:
+            for k in req["state"]["desired"]:
+                iot_storage["shadow"]["desired"][k] = req["state"]["desired"][k]
+                #  print("desired : " + k + "=", v)
+
+        resp_str = json.dumps(resp)
+        print("response:" + resp_str)
+        mqttc.publish(gettopic, resp_str, 1, True)
+        #  mqttc.publish(gettopic, '{"method":"control"}', 1, True)
+    elif req["method"] == "update_firm_info":
+        iot_storage["firm"] = req["state"]
+        resp_str = json.dumps(resp)
+        print("response:" + resp_str)
+        mqttc.publish(gettopic, resp_str, 1, True)
     else :
         print("invalid method:" + req["method"])
 
@@ -74,7 +99,7 @@ def print_usage():
 def main(argv):
     global gettopic
     global updatetopic
-    
+
     debug = False
     host = "localhost"
     client_id = None
@@ -86,7 +111,7 @@ def main(argv):
 
     try:
         opts, args = getopt.getopt(argv, "dh:i:k:p:P:T:U:u:v",
-                                   ["debug", "id", "keepalive", "port", "password", 
+                                   ["debug", "id", "keepalive", "port", "password",
                                     "gettopic", "updatetopic", "username", "verbose"])
     except getopt.GetoptError as s:
         print_usage()
